@@ -1,0 +1,31 @@
+import type { ReactNode } from 'react'
+
+export function Button({ children, variant = 'primary', onClick, type = 'button', disabled = false }: { children: ReactNode; variant?: 'primary'|'secondary'|'danger'|'ghost'; onClick?: () => void; type?: 'button'|'submit'; disabled?: boolean }) {
+  const styles = { primary: 'bg-teal-700 text-white hover:bg-teal-800', secondary: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50', danger: 'bg-red-700 text-white hover:bg-red-800', ghost: 'text-teal-700 hover:bg-teal-50' }
+  return <button type={type} disabled={disabled} onClick={onClick} className={`min-h-11 rounded-lg px-4 py-2.5 text-sm font-semibold transition focus:outline-none focus:ring-4 focus:ring-teal-200 disabled:opacity-60 ${styles[variant]}`}>{children}</button>
+}
+
+export function Field({ label, required, help, error, type = 'text', placeholder, defaultValue }: { label: string; required?: boolean; help?: string; error?: string; type?: string; placeholder?: string; defaultValue?: string }) {
+  return <label className="block text-sm font-semibold text-slate-700">{label}{required && <span className="ml-1 text-red-700">*</span>}<input type={type} placeholder={placeholder} defaultValue={defaultValue} className={`mt-2 min-h-11 w-full rounded-lg border bg-white px-3.5 text-slate-900 outline-none placeholder:text-slate-400 focus:ring-4 ${error ? 'border-red-600 focus:ring-red-100' : 'border-slate-300 focus:border-teal-600 focus:ring-teal-100'}`}/>{help && <span className="mt-1.5 block text-xs font-normal text-slate-500">{help}</span>}{error && <span className="mt-1.5 block text-xs font-medium text-red-700">{error}</span>}</label>
+}
+
+export function Select({ label, required, children, defaultValue, onChange }: { label: string; required?: boolean; children: ReactNode; defaultValue?: string; onChange?: (value: string) => void }) {
+  return <label className="block text-sm font-semibold text-slate-700">{label}{required && <span className="ml-1 text-red-700">*</span>}<select defaultValue={defaultValue} onChange={e => onChange?.(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3.5 text-slate-900 outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100">{children}</select></label>
+}
+
+export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'success'|'warning'|'info'|'neutral' }) {
+  const s = { success: 'bg-emerald-50 text-emerald-800 ring-emerald-200', warning: 'bg-amber-50 text-amber-900 ring-amber-200', info: 'bg-blue-50 text-blue-800 ring-blue-200', neutral: 'bg-slate-100 text-slate-700 ring-slate-200' }
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${s[tone]}`}><span className="size-1.5 rounded-full bg-current"/>{children}</span>
+}
+
+export function Card({ children, className = '' }: { children: ReactNode; className?: string }) { return <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div> }
+
+export function PageTitle({ title, subtitle, action }: { title: string; subtitle: string; action?: ReactNode }) {
+  return <div className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-950">{title}</h1><p className="mt-1 text-sm text-slate-600">{subtitle}</p></div>{action}</div>
+}
+
+export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
+  return <div className="overflow-x-auto"><table className="w-full border-collapse text-left text-sm"><thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-600"><tr>{headers.map(h => <th key={h} className="border-b border-slate-200 px-5 py-3.5 font-bold">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{children}</tbody></table></div>
+}
+
+export function Pagination() { return <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4 text-sm text-slate-600"><span>Showing 1–5 of 248 records</span><div className="flex gap-2"><Button variant="secondary">Previous</Button><Button variant="secondary">Next</Button></div></div> }
