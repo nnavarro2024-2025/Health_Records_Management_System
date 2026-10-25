@@ -1,6 +1,6 @@
 require('../src/config/env')
 
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 const { pool, withTransaction } = require('../src/db')
 
 const demoPassword = 'Demo@2026'

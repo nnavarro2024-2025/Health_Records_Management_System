@@ -1,5 +1,5 @@
 const express = require('express')
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { rateLimit } = require('express-rate-limit')
 const { pool, withTransaction } = require('../db')
@@ -8,6 +8,7 @@ const { jwtSecret } = require('../config/env')
 const { AppError } = require('../errors')
 
 const router = express.Router()
+const dummyPasswordHash = bcrypt.hashSync('not-a-real-account-password', 10)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -50,10 +51,7 @@ router.post('/login', loginLimiter, async (request, response, next) => {
     const account = rows[0]
     const passwordMatches = account
       ? await bcrypt.compare(password, account.password_hash)
-      : await bcrypt.compare(
-          password,
-          '$2b$12$C6UzMDM.H6dfI/f/IKcEe.9pA8U8M8.nx7HfO7Z9S9dYtYJrV8l7K',
-        )
+      : await bcrypt.compare(password, dummyPasswordHash)
 
     if (!account || !passwordMatches || account.account_status !== 'active') {
       await writeFailedLogin(email, account)
