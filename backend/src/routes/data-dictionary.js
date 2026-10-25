@@ -4,7 +4,7 @@ const { authenticate, authorize } = require('../middleware/auth')
 const { getPagination, paginatedResponse } = require('../pagination')
 
 const router = express.Router()
-router.use(authenticate, authorize('Admin', 'Records Officer', 'Physician', 'Nurse'))
+router.use(authenticate, authorize('Admin', 'Records Officer'))
 
 router.get('/', async (request, response, next) => {
   try {

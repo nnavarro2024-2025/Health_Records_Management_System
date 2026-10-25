@@ -1,6 +1,6 @@
 # Health Records Database ERD Notes
 
-The schema is designed for MySQL/InnoDB in XAMPP. It has 21 tables and separates
+The schema is designed for MySQL/InnoDB in XAMPP. It has 22 tables and separates
 patient identity, encounter data, clinical lists, reference values, users, and
 auditable workflow records. The seed data mirrors the Filipino names, roles,
 patient identifiers, statuses, and retention examples in `src/data/mockData.ts`.
@@ -75,6 +75,12 @@ data does not provide them.
 21. **data_dictionary** — `data_dictionary_id` (PK), `table_name`,
     `column_name`, `description`, `data_type`, `field_length`; UQ
     `(table_name, column_name)`.
+22. **patient_vitals** — `vitals_id` (PK), `patient_id` (required FK),
+    `admission_id` (nullable FK), `recorded_at`, nullable `temperature_c`,
+    `systolic_bp`, `diastolic_bp`, `pulse_bpm`, `respiratory_rate`,
+    `spo2_percent`, `weight_kg`, `height_cm`, and nullable
+    `recorded_by_user_id` (FK). CHECK constraints enforce plausible ranges and
+    require at least one measurement.
 
 ## Relationships, cardinality, and participation
 
@@ -110,6 +116,9 @@ second side. Optionality describes whether a row may exist without a related row
 | `retention_categories` → `retention_records` | 1:N | Each retention record has one category (mandatory); a category may be used by zero or many records (optional). |
 | `admissions` → `retention_records` | 1:0..1 | A retention record belongs to one encounter (mandatory); an encounter has zero or one retention record (optional). |
 | `users` → `retention_records` (reviewer) | 1:N | A pending record may have no reviewer (optional); a user may review zero or many records (optional). |
+| `patients` → `patient_vitals` | 1:N | Every vitals row belongs to exactly one patient (mandatory); a patient may have zero or many vitals rows (optional). |
+| `admissions` → `patient_vitals` | 1:N | A vitals row may be linked to no admission or one admission (optional); an admission may have zero or many linked vitals rows (optional). |
+| `users` → `patient_vitals` (recorder) | 1:N | A vitals row may have no recorded user (optional); a user may record zero or many vitals rows (optional). |
 
 `data_dictionary` is a standalone metadata table and has no FK relationships.
 

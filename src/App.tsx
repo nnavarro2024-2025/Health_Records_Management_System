@@ -1,56 +1,161 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { activities, auditLogs, dictionary, patients, retentionRecords, users, type Role } from './data/mockData'
-import { Badge, Button, Card, Field, PageTitle, Pagination, Select, Table } from './components/ui'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Button, Card, PageTitle } from './components/ui'
+import { apiRequest, clearAuthSession, getStoredAuthUser, isRole, setAuthSession, setUnauthorizedHandler, type AuthUser, type LoginResponse, type Role } from './api'
+import { AdmissionForm, DischargeForm, PatientList, PatientProfile, PatientRegister } from './components/PatientWorkflows'
+import { AuditScreen, RetentionScreen, UsersScreen } from './components/AdminScreens'
+import { ToastProvider } from './components/Toast'
+import { formatDate, formatDateTime } from './lib/format'
+import { HOSPITAL_NAME, SYSTEM_NAME } from './lib/branding'
 
-type Screen = 'dashboard'|'patients'|'register'|'profile'|'admission'|'discharge'|'audit'|'retention'|'dictionary'|'users'
+type Screen = 'dashboard'|'patients'|'register'|'profile'|'admission'|'discharge'|'audit'|'retention'|'users'
 const nav: {id: Screen; label: string; roles?: Role[]}[] = [
   {id:'dashboard',label:'Dashboard'},{id:'patients',label:'Patient Records'},{id:'register',label:'Register Patient',roles:['Admin','Records Officer']},
-  {id:'admission',label:'New Admission',roles:['Admin','Records Officer','Physician']},{id:'audit',label:'Audit Log',roles:['Admin','Records Officer']},
-  {id:'retention',label:'Retention & Disposal',roles:['Admin']},{id:'dictionary',label:'Data Dictionary',roles:['Admin','Records Officer']},{id:'users',label:'User Management',roles:['Admin']}
+  {id:'admission',label:'New Admission',roles:['Admin','Records Officer','Physician']},{id:'discharge',label:'Discharge Patient',roles:['Admin','Records Officer','Physician']},{id:'audit',label:'Audit Log',roles:['Admin','Records Officer']},
+  {id:'retention',label:'Retention & Disposal',roles:['Admin']},{id:'users',label:'User Management',roles:['Admin']}
 ]
 
-function Login({ onLogin }: { onLogin: (role: Role) => void }) {
-  const [role,setRole]=useState<Role>('Admin'); const [loading,setLoading]=useState(false)
-  const submit=(e:FormEvent)=>{e.preventDefault();setLoading(true);setTimeout(()=>onLogin(role),500)}
-  return <main className="grid min-h-screen bg-slate-50 lg:grid-cols-2">
-    <section className="hidden bg-teal-900 p-14 text-white lg:flex lg:flex-col lg:justify-between"><Logo light/><div><p className="text-sm font-bold uppercase tracking-widest text-teal-200">Safe. Organized. Accountable.</p><h1 className="mt-4 max-w-xl text-5xl font-bold leading-tight">Better records support better patient care.</h1><p className="mt-5 max-w-lg text-lg text-teal-100">A secure, standards-based health information system for San Gabriel Community Hospital.</p></div><p className="text-sm text-teal-200">Compliant with the Data Privacy Act of 2012 (RA 10173)</p></section>
-    <section className="flex items-center justify-center p-6"><Card className="w-full max-w-md p-8"><div className="mb-8 lg:hidden"><Logo/></div><p className="text-sm font-bold text-teal-700">WELCOME BACK</p><h2 className="mt-2 text-3xl font-bold text-slate-950">Sign in to MedRecord</h2><p className="mt-2 text-sm text-slate-600">Use your hospital-issued account to continue.</p>
-      <form onSubmit={submit} className="mt-7 space-y-5"><Field label="Email address" required type="email" defaultValue="admin@hsc.org.ph"/><Field label="Password" required type="password" defaultValue="password"/><Select label="Demo role" required defaultValue={role} onChange={value=>setRole(value as Role)}>{['Admin','Records Officer','Physician','Nurse'].map(r=><option key={r} value={r}>{r}</option>)}</Select><Button type="submit" disabled={loading}>{loading?'Signing in…':'Sign in securely'}</Button></form>
-      <div className="mt-6 rounded-lg bg-blue-50 p-4 text-sm text-blue-900"><strong>First time here?</strong> Select a demo role above. Each role has access only to the records and tools needed for their work.</div>
+function Login({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const submit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const result = await apiRequest<LoginResponse>('/api/auth/login', {
+        method: 'POST',
+        authenticated: false,
+        body: { email, password },
+      })
+      if (
+        !result ||
+        typeof result.token !== 'string' ||
+        !result.user ||
+        typeof result.user.id !== 'string' ||
+        typeof result.user.name !== 'string' ||
+        typeof result.user.email !== 'string' ||
+        !isRole(result.user.role)
+      ) {
+        throw new Error('The server returned an invalid login response.')
+      }
+      setAuthSession(result.token, result.user)
+      onLogin(result.user)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to sign in. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  return <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-teal-50 via-slate-50 to-cyan-100 p-6">
+    <div aria-hidden="true" className="pointer-events-none absolute -left-24 -top-24 size-80 rounded-full bg-teal-200/40 blur-3xl"/>
+    <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 -right-24 size-96 rounded-full bg-cyan-200/50 blur-3xl"/>
+    <section className="relative w-full max-w-md">
+      <div className="mb-6 flex flex-col items-center text-center">
+        <div aria-hidden="true" className="mb-4 grid size-14 place-items-center rounded-2xl bg-teal-700 text-3xl font-bold text-white shadow-lg shadow-teal-900/20">+</div>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-800">{HOSPITAL_NAME}</p>
+      </div>
+      <Card className="w-full border-white/80 p-8 shadow-xl shadow-teal-950/10 sm:p-10"><h2 className="text-center text-3xl font-bold tracking-tight text-slate-950">Sign in to {SYSTEM_NAME}</h2>
+      <form onSubmit={submit} className="mt-8 space-y-5">
+        <label className="block text-sm font-semibold text-slate-700">Email address<span className="ml-1 text-red-700">*</span><input autoComplete="username" required type="email" value={email} onChange={e=>setEmail(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3.5 text-slate-900 outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100"/></label>
+        <label className="block text-sm font-semibold text-slate-700">Password<span className="ml-1 text-red-700">*</span><input autoComplete="current-password" required type="password" value={password} onChange={e=>setPassword(e.target.value)} className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3.5 text-slate-900 outline-none focus:border-teal-600 focus:ring-4 focus:ring-teal-100"/></label>
+        {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        <div className="[&>button]:w-full"><Button type="submit" disabled={loading}>{loading?'Signing in…':'Sign in securely'}</Button></div>
+      </form>
     </Card></section>
   </main>
 }
 
-function Logo({light=false}:{light?:boolean}) { return <div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-xl bg-teal-600 text-2xl font-bold text-white">+</div><div><div className={`font-bold ${light?'text-white':'text-slate-950'}`}>MedRecord</div><div className={`text-xs ${light?'text-teal-200':'text-slate-500'}`}>San Gabriel Community Hospital</div></div></div> }
+function Logo({light=false}:{light?:boolean}) { return <div className="flex items-center gap-3"><div className="grid size-11 place-items-center rounded-xl bg-teal-600 text-2xl font-bold text-white">+</div><div><div className={`font-bold ${light?'text-white':'text-slate-950'}`}>{SYSTEM_NAME}</div><div className={`text-xs ${light?'text-teal-200':'text-slate-500'}`}>{HOSPITAL_NAME}</div></div></div> }
 
-function Layout({role,screen,setScreen,logout,children}:{role:Role;screen:Screen;setScreen:(s:Screen)=>void;logout:()=>void;children:ReactNode}) {
-  return <div className="min-h-screen bg-slate-50 lg:flex"><aside className="border-b border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:w-64 lg:border-b-0 lg:border-r"><div className="p-5"><Logo/></div><nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1">{nav.filter(n=>!n.roles||n.roles.includes(role)).map(n=><button key={n.id} onClick={()=>setScreen(n.id)} className={`min-h-11 shrink-0 rounded-lg px-3.5 text-left text-sm font-semibold transition focus:outline-none focus:ring-4 focus:ring-teal-100 lg:w-full ${screen===n.id?'bg-teal-50 text-teal-800':'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}>{n.label}</button>)}</nav><div className="hidden border-t border-slate-200 p-4 lg:absolute lg:inset-x-0 lg:bottom-0 lg:block"><p className="text-sm font-bold text-slate-900">Juan Perez</p><p className="text-xs text-slate-500">{role}</p><button onClick={logout} className="mt-3 min-h-11 w-full rounded-lg text-left text-sm font-semibold text-slate-600 hover:text-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-100">Sign out</button></div></aside><main className="min-w-0 flex-1 p-5 lg:ml-64 lg:p-8"><div className="mx-auto max-w-7xl">{children}</div></main></div>
+function Layout({user,screen,setScreen,logout,children}:{user:AuthUser;screen:Screen;setScreen:(s:Screen)=>void;logout:()=>void;children:ReactNode}) {
+  const role = user.role
+  return <div className="min-h-screen bg-slate-50 lg:flex"><aside className="border-b border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:w-64 lg:border-b-0 lg:border-r"><div className="p-5"><Logo/></div><nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:block lg:space-y-1">{nav.filter(n=>!n.roles||n.roles.includes(role)).map(n=><button key={n.id} onClick={()=>setScreen(n.id)} className={`min-h-11 shrink-0 rounded-lg px-3.5 text-left text-sm font-semibold transition focus:outline-none focus:ring-4 focus:ring-teal-100 lg:w-full ${screen===n.id?'bg-teal-50 text-teal-800':'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}>{n.label}</button>)}</nav><div className="border-t border-slate-200 p-4 lg:absolute lg:inset-x-0 lg:bottom-0"><p className="text-sm font-bold text-slate-900">{user.name}</p><p className="text-xs text-slate-500">{user.role}</p><button onClick={logout} className="mt-3 min-h-11 w-full rounded-lg text-left text-sm font-semibold text-slate-600 hover:text-teal-700 focus:outline-none focus:ring-4 focus:ring-teal-100">Logout</button></div></aside><main className="min-w-0 flex-1 p-5 lg:ml-64 lg:p-8"><div className="mx-auto max-w-7xl">{children}</div></main></div>
 }
 
-function Dashboard({go}:{go:(s:Screen)=>void}) { return <><PageTitle title="Good morning, Juan" subtitle="Wednesday, June 18, 2025 · Here’s what needs your attention." action={<Button onClick={()=>go('register')}>Register new patient</Button>}/><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Total patients','12,482','+28 this month'],['Current admissions','86','12 awaiting review'],['Discharges today','14','3 summaries pending'],['Retention review','27','Action required']].map((x,i)=><Card key={x[0]} className="p-5"><p className="text-sm font-semibold text-slate-600">{x[0]}</p><p className="mt-2 text-3xl font-bold text-slate-950">{x[1]}</p><p className={`mt-2 text-xs font-semibold ${i===3?'text-amber-800':'text-teal-700'}`}>{x[2]}</p></Card>)}</div><div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]"><Card><div className="border-b border-slate-200 p-5"><h2 className="font-bold text-slate-950">Recent activity</h2><p className="text-sm text-slate-500">Updates across the hospital today</p></div><div className="divide-y divide-slate-100">{activities.map(a=><div key={a.time} className="flex gap-3 p-4"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{a.initials}</span><p className="text-sm text-slate-600"><strong className="text-slate-900">{a.person}</strong> {a.action} for <button onClick={()=>go('profile')} className="font-semibold text-blue-700 hover:underline">{a.record}</button><span className="mt-1 block text-xs text-slate-400">{a.time}</span></p></div>)}</div></Card><Card className="border-teal-200 bg-teal-50 p-5"><p className="text-xs font-bold uppercase tracking-wider text-teal-800">Quick Start</p><h2 className="mt-2 text-xl font-bold text-slate-950">Common tasks</h2><p className="mt-2 text-sm text-slate-600">Start with one of these frequently used workflows.</p><div className="mt-5 grid gap-2"><Button variant="secondary" onClick={()=>go('patients')}>Find a patient record</Button><Button variant="secondary" onClick={()=>go('admission')}>Create an admission</Button><Button variant="secondary" onClick={()=>go('dictionary')}>Browse field definitions</Button></div><p className="mt-5 border-t border-teal-200 pt-4 text-xs text-slate-600"><strong>Tip:</strong> Patient IDs are the fastest way to locate a record.</p></Card></div></> }
+type DashboardData = {
+  totalPatients: number
+  currentAdmissions: number
+  dischargesToday: number
+  retentionPending: number
+  recentActivity: Array<{
+    audit_log_id: number
+    actor_name: string
+    role: string | null
+    action_code: string
+    description: string
+    patient_id: number | null
+    patient_name: string | null
+    occurred_at: string
+  }>
+}
 
-function Patients({go}:{go:(s:Screen)=>void}) { const [q,setQ]=useState(''); const filtered=patients.filter(p=>(p.name+p.id+p.status).toLowerCase().includes(q.toLowerCase())); return <><PageTitle title="Patient Records" subtitle="Search and manage 12,482 patient health records." action={<Button onClick={()=>go('register')}>Register new patient</Button>}/><Card><div className="flex flex-wrap gap-3 border-b border-slate-200 p-4"><input value={q} onChange={e=>setQ(e.target.value)} aria-label="Search patients" placeholder="Search name or hospital ID…" className="min-h-11 min-w-64 flex-1 rounded-lg border border-slate-300 px-3.5 focus:outline-none focus:ring-4 focus:ring-teal-100"/><select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3.5"><option>All statuses</option><option>Admitted</option><option>Discharged</option></select></div><Table headers={['Patient','Hospital ID','Details','Status','Room','Last visit','Action']}>{filtered.map(p=><tr key={p.id} className="hover:bg-slate-50"><td className="px-5 py-4 font-semibold text-slate-950">{p.name}<span className="block text-xs font-normal text-slate-500">{p.address}</span></td><td className="px-5 py-4 font-mono text-xs">{p.id}</td><td className="px-5 py-4">{p.age} yrs · {p.sex}</td><td className="px-5 py-4"><Badge tone={p.status==='Admitted'?'success':p.status==='Outpatient'?'info':'neutral'}>{p.status}</Badge></td><td className="px-5 py-4">{p.room}</td><td className="px-5 py-4">{p.lastVisit}</td><td className="px-5 py-4"><Button variant="ghost" onClick={()=>go('profile')}>View record</Button></td></tr>)}</Table><Pagination/></Card></> }
+function Dashboard({go,userName}:{go:(s:Screen, patientId?:string)=>void;userName:string}) {
+  const [data, setData] = useState<DashboardData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-function Section({title,description,children}:{title:string;description?:string;children:ReactNode}) { return <Card className="p-6"><div className="mb-5 border-b border-slate-200 pb-4"><h2 className="text-lg font-bold text-slate-950">{title}</h2>{description&&<p className="mt-1 text-sm text-slate-500">{description}</p>}</div><div className="grid gap-5 md:grid-cols-2">{children}</div></Card> }
-function FormActions({cancel,save='Save record'}:{cancel:()=>void;save?:string}) { const [done,setDone]=useState(false);return <div className="sticky bottom-4 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-lg"><span className="text-sm font-semibold text-emerald-700">{done?'Record saved successfully.':'Fields marked * are required'}</span><div className="flex gap-2"><Button variant="secondary" onClick={cancel}>Cancel</Button><Button onClick={()=>setDone(true)}>{save}</Button></div></div> }
-function Register({go}:{go:(s:Screen)=>void}) { return <><PageTitle title="Register a New Patient" subtitle="Create a permanent hospital record. UHDDS-aligned fields are marked where applicable."/><div className="space-y-5"><Section title="Personal identification" description="Use the patient’s legal name as shown on a valid ID."><Field label="First name" required/><Field label="Middle name"/><Field label="Last name" required/><Field label="Personal ID / PhilHealth number" help="Enter a government-issued identifier if available."/><Field label="Date of birth" required type="date"/><Select label="Sex" required><option>Select sex</option><option>Female</option><option>Male</option><option>Other / not stated</option></Select><Field label="Race / ethnicity" defaultValue="Filipino"/><Field label="Mobile number" placeholder="+63 9XX XXX XXXX"/></Section><Section title="Residence and contact"><Field label="Street / barangay" required/><Field label="City / municipality" required/><Field label="Province" required/><Field label="ZIP code"/><Field label="Emergency contact name"/><Field label="Emergency contact number"/></Section><Section title="Clinical alerts" description="Transitions of Care information for safe handoffs."><Field label="Known allergies / intolerances" help="Enter NKDA if no known drug allergies."/><Field label="Active problem list"/><Field label="Active medications" help="Include drug, dose, route, and frequency."/></Section><FormActions cancel={()=>go('patients')} save="Register patient"/></div></> }
+  useEffect(() => {
+    let active = true
+    apiRequest<{ data: DashboardData }>('/api/dashboard/summary')
+      .then((result) => { if (active) setData(result.data) })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Dashboard summary could not be loaded.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
 
-function Profile({go}:{go:(s:Screen)=>void}) { const [tab,setTab]=useState('Demographics'); const tabs=['Demographics','Admissions','Diagnoses & Procedures','Medications','Allergies','Documents']; return <><div className="mb-6 flex flex-wrap items-start justify-between gap-4"><div><button onClick={()=>go('patients')} className="mb-3 text-sm font-semibold text-blue-700 hover:underline">← Back to patient records</button><h1 className="text-2xl font-bold text-slate-950">Maria Teresa Santos</h1><p className="mt-1 font-mono text-sm text-slate-500">HSC-2025-00482 · 46 years · Female</p></div><div className="flex gap-2"><Button variant="secondary" onClick={()=>go('discharge')}>Start discharge</Button><Button onClick={()=>go('admission')}>New encounter</Button></div></div><div className="mb-5 flex gap-1 overflow-x-auto border-b border-slate-200">{tabs.map(t=><button key={t} onClick={()=>setTab(t)} className={`min-h-11 shrink-0 border-b-2 px-4 text-sm font-semibold ${tab===t?'border-teal-700 text-teal-800':'border-transparent text-slate-500 hover:text-slate-900'}`}>{t}</button>)}</div>{tab==='Demographics'?<div className="grid gap-5 lg:grid-cols-3"><Card className="p-5 lg:col-span-2"><h2 className="font-bold text-slate-950">Patient information</h2><dl className="mt-5 grid gap-5 sm:grid-cols-2">{[['Date of birth','August 14, 1978'],['Civil status','Married'],['Residence','Brgy. Pinyahan, Quezon City'],['Race / ethnicity','Filipino'],['PhilHealth no.','12-345678901-2'],['Mobile','+63 917 428 9012']].map(x=><div key={x[0]}><dt className="text-xs font-bold uppercase text-slate-500">{x[0]}</dt><dd className="mt-1 text-sm font-semibold text-slate-900">{x[1]}</dd></div>)}</dl></Card><Card className="p-5"><h2 className="font-bold">Clinical alerts</h2><div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-bold text-amber-900">Allergy: Penicillin</p><p className="mt-1 text-xs text-amber-800">Reaction: urticaria</p></div><p className="mt-4 text-sm"><strong>Active problem:</strong><br/>Essential hypertension</p></Card></div>:<Card className="p-10 text-center"><h2 className="text-lg font-bold">{tab}</h2><p className="mt-2 text-sm text-slate-500">No additional records have been added. Use “New encounter” to update this section.</p></Card>}</> }
+  const metrics = [
+    ['Total patients', data?.totalPatients],
+    ['Current admissions', data?.currentAdmissions],
+    ['Discharges today', data?.dischargesToday],
+    ['Retention review', data?.retentionPending],
+  ] as const
 
-function Admission({go}:{go:(s:Screen)=>void}) { return <><PageTitle title="New Admission / Encounter" subtitle="Record UHDDS admission and clinical encounter details."/><div className="space-y-5"><Section title="Patient and encounter"><Field label="Hospital ID" required defaultValue="HSC-2025-00482"/><Field label="Patient name" required defaultValue="Maria Teresa Santos"/><Field label="Admission date and time" required type="datetime-local"/><Select label="Type of admission" required><option>Scheduled</option><option>Unscheduled / Emergency</option></Select><Field label="Attending physician" required defaultValue="Dr. Rafael Lim"/><Select label="Expected source of payment" required><option>PhilHealth</option><option>Private insurance</option><option>Self-pay</option><option>Government program</option></Select></Section><Section title="Clinical details"><Field label="Principal diagnosis" required help="Condition established after study to be chiefly responsible for admission."/><Field label="ICD-10 code" placeholder="e.g. I10"/><Field label="Other diagnoses" help="Separate multiple conditions with semicolons."/><Field label="Significant procedures"/><Field label="Active medications"/><Field label="Allergies / intolerances" defaultValue="Penicillin — urticaria"/></Section><FormActions cancel={()=>go('profile')} save="Create admission"/></div></> }
+  return <>
+    <PageTitle title="Dashboard" subtitle={`Welcome, ${userName}. Today is ${formatDate(new Date())}.`}/>
+    {error && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([label, value], index) => <Card key={label} className="p-5"><p className="text-sm font-semibold text-slate-600">{label}</p><p className="mt-2 text-3xl font-bold text-slate-950">{loading ? '…' : value?.toLocaleString() ?? '—'}</p><p className={`mt-2 text-xs font-semibold ${index === 3 ? 'text-amber-800' : 'text-teal-700'}`}>{index === 3 ? 'Pending review' : ''}</p></Card>)}</div>
+    <div className="mt-6">
+      <Card><div className="border-b border-slate-200 p-5"><h2 className="font-bold text-slate-950">Recent activity</h2><p className="text-sm text-slate-500">Latest audited record activity</p></div>
+        {loading ? <p role="status" className="p-5 text-sm text-slate-600">Loading recent activity…</p>
+          : !data?.recentActivity.length ? <p className="p-5 text-sm text-slate-600">No recent activity recorded.</p>
+            : <div className="divide-y divide-slate-100">{data.recentActivity.map((activity) => <div key={activity.audit_log_id} className="flex gap-3 p-4"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-bold text-slate-700">{activity.actor_name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span><p className="text-sm text-slate-600"><strong className="text-slate-900">{activity.actor_name}</strong><span className="ml-2 text-xs text-slate-500">{activity.role || 'System'}</span>{' '}{activity.description}{activity.patient_id && activity.patient_name ? <> for <button onClick={() => go('profile', String(activity.patient_id))} className="font-semibold text-blue-700 hover:underline">{activity.patient_name}</button></> : null}<span className="mt-1 block text-xs text-slate-400">{formatDateTime(activity.occurred_at)}</span></p></div>)}</div>}
+      </Card>
+    </div>
+  </>
+}
 
-function Discharge({go}:{go:(s:Screen)=>void}) { return <><PageTitle title="Discharge Patient" subtitle="Complete the discharge summary and finalize this admission."/><div className="space-y-5"><Section title="Discharge details"><Field label="Patient" required defaultValue="Maria Teresa Santos — HSC-2025-00482"/><Field label="Discharge date and time" required type="datetime-local"/><Select label="Patient disposition" required><option>Home / self-care</option><option>Transferred to another facility</option><option>Home health service</option><option>Against medical advice</option><option>Expired</option></Select><Field label="Total charges (PHP)" required type="number" placeholder="0.00"/><Field label="Final principal diagnosis" required/><Field label="Other diagnoses"/><Field label="Significant procedures"/><Field label="Discharge medications" help="Include reconciled medication list for transition of care."/></Section><FormActions cancel={()=>go('profile')} save="Complete discharge"/></div></> }
-
-function Audit() { return <><PageTitle title="Audit Log" subtitle="Review all access and changes to protected health information." action={<Button variant="secondary">Export audit report</Button>}/><Card><div className="flex flex-wrap gap-3 border-b border-slate-200 p-4"><input aria-label="Search audit log" placeholder="Search user, patient, or ID…" className="min-h-11 flex-1 rounded-lg border border-slate-300 px-3.5"/><input type="date" className="min-h-11 rounded-lg border border-slate-300 px-3.5"/><select className="min-h-11 rounded-lg border border-slate-300 px-3.5"><option>All actions</option><option>Viewed</option><option>Updated</option></select></div><Table headers={['User','Role','Action','Patient record','Date & time']}>{auditLogs.map(x=><tr key={x.date}><td className="px-5 py-4 font-semibold">{x.user}</td><td className="px-5 py-4">{x.role}</td><td className="px-5 py-4"><Badge tone={x.action==='UPDATED'?'warning':'info'}>{x.action}</Badge></td><td className="px-5 py-4">{x.patient}<span className="block font-mono text-xs text-slate-500">{x.id}</span></td><td className="px-5 py-4">{x.date}</td></tr>)}</Table><Pagination/></Card></> }
-
-function Retention() { const [selected,setSelected]=useState<string|null>(null); const [toast,setToast]=useState(''); return <><PageTitle title="Retention & Disposal" subtitle="Admin review queue for records that have met the approved retention period."/><div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>27 records require review.</strong> Disposal must be authorized and documented according to hospital policy and applicable law.</div><Card><Table headers={['Record','Patient','Discharge date','Category','Reason','Decision']}>{retentionRecords.map(r=><tr key={r.id}><td className="px-5 py-4 font-mono text-xs">{r.id}</td><td className="px-5 py-4 font-semibold">{r.patient}</td><td className="px-5 py-4">{r.discharged}</td><td className="px-5 py-4">{r.category}</td><td className="px-5 py-4"><Badge tone="warning">{r.review}</Badge></td><td className="px-5 py-4"><div className="flex gap-2"><Button variant="danger" onClick={()=>setSelected(r.id)}>Approve disposal</Button><Button variant="secondary">Retain</Button></div></td></tr>)}</Table></Card>{toast&&<div className="fixed bottom-6 right-6 rounded-lg bg-emerald-800 px-5 py-4 text-sm font-semibold text-white shadow-xl">{toast}</div>}{selected&&<div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-5"><Card className="max-w-md p-6"><h2 className="text-xl font-bold">Approve record disposal?</h2><p className="mt-3 text-sm text-slate-600">This will authorize secure disposal of <strong>{selected}</strong>. The decision is permanent and will be recorded in the audit log.</p><div className="mt-6 flex justify-end gap-2"><Button variant="secondary" onClick={()=>setSelected(null)}>Cancel</Button><Button variant="danger" onClick={()=>{setSelected(null);setToast('Disposal approved and logged.')}}>Yes, approve disposal</Button></div></Card></div>}</> }
-
-function Dictionary() { return <><PageTitle title="Data Dictionary" subtitle="Field definitions and technical specifications for backend integration." action={<Button variant="secondary">Download CSV</Button>}/><Card><Table headers={['Field name','Definition','Data type','Field size','Stored in']}>{dictionary.map(r=><tr key={r[0]}>{r.map((v,i)=><td key={v} className={`px-5 py-4 ${i===0?'font-mono text-xs font-bold text-teal-800':''}`}>{v}</td>)}</tr>)}</Table><Pagination/></Card></> }
-function Users() { return <><PageTitle title="User Management" subtitle="Manage hospital staff access and role-based permissions." action={<Button>Add user</Button>}/><Card><Table headers={['User','Email','Role','Status','Last active','Action']}>{users.map(u=><tr key={u.email}><td className="px-5 py-4 font-semibold">{u.name}</td><td className="px-5 py-4">{u.email}</td><td className="px-5 py-4"><Badge tone="info">{u.role}</Badge></td><td className="px-5 py-4"><Badge tone="success">{u.status}</Badge></td><td className="px-5 py-4">{u.last}</td><td className="px-5 py-4"><Button variant="ghost">Manage</Button></td></tr>)}</Table></Card></> }
+function AppContent() {
+  const [user,setUser]=useState<AuthUser|null>(()=>getStoredAuthUser()); const [screen,setScreen]=useState<Screen>('dashboard')
+  const [selectedPatientId, setSelectedPatientId] = useState<string>()
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null)
+      setScreen('dashboard')
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [])
+  if(!user) return <Login onLogin={authenticatedUser=>setUser(authenticatedUser)}/>
+  const navigate = (nextScreen: Screen, patientId?: string) => {
+    const permitted = nav.find((item) => item.id === nextScreen)
+    if (permitted?.roles && !permitted.roles.includes(user.role)) return
+    if (patientId) setSelectedPatientId(patientId)
+    setScreen(nextScreen)
+  }
+  const canRegister = user.role === 'Admin' || user.role === 'Records Officer'
+  const screens:Record<Screen,ReactNode>={
+    dashboard:<Dashboard go={navigate} userName={user.name}/>,
+    patients:<PatientList go={navigate} canRegister={canRegister}/>,
+    register:<PatientRegister go={navigate}/>,
+    profile:<PatientProfile go={navigate} role={user.role} initialPatientId={selectedPatientId}/>,
+    admission:<AdmissionForm go={navigate}/>,
+    discharge:<DischargeForm go={navigate}/>,
+    audit:<AuditScreen/>,retention:<RetentionScreen/>,users:<UsersScreen currentUserId={user.id}/>
+  }
+  return <Layout user={user} screen={screen} setScreen={(next) => navigate(next)} logout={()=>{clearAuthSession();setUser(null);setScreen('dashboard')}}>{screens[screen]}</Layout>
+}
 
 export default function App() {
-  const [role,setRole]=useState<Role|null>(null); const [screen,setScreen]=useState<Screen>('dashboard')
-  if(!role) return <Login onLogin={r=>setRole(r)}/>
-  const screens:Record<Screen,ReactNode>={dashboard:<Dashboard go={setScreen}/>,patients:<Patients go={setScreen}/>,register:<Register go={setScreen}/>,profile:<Profile go={setScreen}/>,admission:<Admission go={setScreen}/>,discharge:<Discharge go={setScreen}/>,audit:<Audit/>,retention:<Retention/>,dictionary:<Dictionary/>,users:<Users/>}
-  return <Layout role={role} screen={screen} setScreen={setScreen} logout={()=>setRole(null)}>{screens[screen]}</Layout>
+  return <ToastProvider><AppContent/></ToastProvider>
 }

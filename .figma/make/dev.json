@@ -1,8 +1,8 @@
 {
   // Files whose changes trigger the install script + dev server restart.
   // Glob syntax: doublestar (supports **, *, ?, [abc], {a,b}). Paths are
-  // repo-relative and case-sensitive. `.mise.toml` and the scripts under
-  // `.figma/make/` are always watched regardless of these lists.
+  // repo-relative and case-sensitive. `.mise.toml` and the design integration
+  // scripts are always watched regardless of these lists.
   //
   // Each key accepts a shorthand array of globs:
   //   "installOn": ["package.json"]

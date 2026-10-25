@@ -1,5 +1,6 @@
 {
-  "name": "figma-make-app",
+  "name": "alaga-health-records",
+  "description": "Alaga health records and patient-care management for Alaga Philippine Medical Center",
   "private": true,
   "version": "1.0.0",
   "type": "module",

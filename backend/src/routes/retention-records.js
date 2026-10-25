@@ -15,7 +15,7 @@ router.use(authenticate, authorize('Admin'))
 router.get('/', async (request, response, next) => {
   try {
     const { page, limit, offset } = getPagination(request.query)
-    const reviewStatus = typeof request.query.status === 'string' ? request.query.status.trim() : ''
+    const reviewStatus = typeof request.query.status === 'string' ? request.query.status.trim() : 'pending_review'
     const allowedStatuses = ['', 'pending_review', 'approved_for_disposal', 'retain', 'disposed']
     if (!allowedStatuses.includes(reviewStatus)) {
       throw new AppError(400, 'INVALID_STATUS', 'Retention status filter is not supported')
@@ -24,8 +24,9 @@ router.get('/', async (request, response, next) => {
     const [countRows] = await pool.execute(
       `SELECT COUNT(*) AS total
        FROM retention_records AS rr
-       WHERE (? = '' OR rr.review_status = ?)`,
-      [reviewStatus, reviewStatus],
+       WHERE (? = '' OR rr.review_status = ?)
+         AND (? = 0 OR rr.review_due_date <= CURRENT_DATE)`,
+      [reviewStatus, reviewStatus, reviewStatus === 'pending_review' ? 1 : 0],
     )
     const [rows] = await pool.execute(
       `SELECT rr.retention_record_id, rr.admission_id, rr.retention_category_id,
@@ -40,9 +41,10 @@ router.get('/', async (request, response, next) => {
        INNER JOIN patients AS p ON p.patient_id = a.patient_id
        LEFT JOIN users AS reviewer ON reviewer.user_id = rr.reviewed_by_user_id
        WHERE (? = '' OR rr.review_status = ?)
+         AND (? = 0 OR rr.review_due_date <= CURRENT_DATE)
        ORDER BY rr.review_due_date, rr.retention_record_id
        LIMIT ? OFFSET ?`,
-      [reviewStatus, reviewStatus, limit, offset],
+      [reviewStatus, reviewStatus, reviewStatus === 'pending_review' ? 1 : 0, limit, offset],
     )
 
     return paginatedResponse(response, rows, page, limit, Number(countRows[0].total))

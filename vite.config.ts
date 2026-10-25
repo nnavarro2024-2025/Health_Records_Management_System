@@ -7,9 +7,7 @@ import path from 'node:path'
 import siteConfiguration from './.figma/make/site.json'
 
 
-// Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // .figma/make/deploy-preview passes `--mode development` for cached-preview builds.
   const emitSourcemaps = mode === 'development'
 
   return {
@@ -36,6 +34,9 @@ react(),
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      proxy: {
+        '/api': 'http://localhost:5000',
+      },
       watch: {
         ignored: [
           '**/.figma/**',
@@ -76,7 +77,7 @@ type FigmaSiteConfiguration = {
   }
 }
 
-/** Applies /.figma/make/site.json to the generated document shell. */
+/** Applies site metadata to the document shell. */
 function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
   function sanitizeHtmlValue(value: string | undefined): string {
     return value?.replace(/[^a-zA-Z0-9_-]/g, '') || ''
@@ -88,9 +89,8 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
     return html.replace(`<!-- ${slotName} -->`, content)
   }
 
-  const title = config.title ?? "Figma Make App"
+  const title = config.title ?? 'Alaga'
   const description = config.description ?? ''
-  // Imported HTML keeps its own favicon; new Makes default to the Make product icon.
   const favicon = config.icons?.icon ?? '/favicon.svg'
   const socialImage = config.openGraph?.image ?? ''
   const language = sanitizeHtmlValue(config.language) || 'en'
@@ -124,27 +124,27 @@ function figmaSiteConfiguration(config: FigmaSiteConfiguration): Plugin {
       order: 'pre',
       handler(html) {
         let result = html
-        result = replaceHtmlCommentSlot(result, 'figma:lang', language)
-        result = replaceHtmlCommentSlot(result, 'figma:title', escapeHtmlText(title))
-        result = replaceHtmlCommentSlot(result, 'figma:head-start', headStart)
-        result = replaceHtmlCommentSlot(result, 'figma:head-end', headEnd)
-        result = replaceHtmlCommentSlot(result, 'figma:body-start', bodyStart)
-        result = replaceHtmlCommentSlot(result, 'figma:body-end', bodyEnd)
+        result = replaceHtmlCommentSlot(result, 'app:lang', language)
+        result = replaceHtmlCommentSlot(result, 'app:title', escapeHtmlText(title))
+        result = replaceHtmlCommentSlot(result, 'app:head-start', headStart)
+        result = replaceHtmlCommentSlot(result, 'app:head-end', headEnd)
+        result = replaceHtmlCommentSlot(result, 'app:body-start', bodyStart)
+        result = replaceHtmlCommentSlot(result, 'app:body-end', bodyEnd)
 
         const tags: HtmlTagDescriptor[] = []
-        if (description) {
+        if (description && !/<meta\s+name=["']description["']/i.test(result)) {
           tags.push({ tag: 'meta', attrs: { name: 'description', content: description }, injectTo: 'head' })
         }
         if (config.robots?.index === false) {
           tags.push({ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' }, injectTo: 'head' })
         }
-        if (favicon) {
+        if (favicon && !/<link\s+rel=["']icon["']/i.test(result)) {
           tags.push({ tag: 'link', attrs: { rel: 'icon', href: favicon }, injectTo: 'head' })
         }
-        if (title) {
+        if (title && !/<meta\s+property=["']og:title["']/i.test(result)) {
           tags.push({ tag: 'meta', attrs: { property: 'og:title', content: title }, injectTo: 'head' })
         }
-        if (description) {
+        if (description && !/<meta\s+property=["']og:description["']/i.test(result)) {
           tags.push({ tag: 'meta', attrs: { property: 'og:description', content: description }, injectTo: 'head' })
         }
         if (socialImage) {
@@ -331,15 +331,8 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
 }
 
 /**
- * Serves a blank render-target page at /.figma/make/kit.html that
- * the Figma preview script drives directly. The page exposes a
- * registry of every file matching `storiesGlob` on
- * window.__FIGMA__.stories so the design surface can dynamically
- * import + mount each entry into its own grid view.
- *
- * Dev-only: `apply: 'serve'` gates the plugin to `vite dev`. Prod
- * builds (`vite build`) skip it entirely so the route doesn't leak
- * into shipped bundles.
+ * Serves a development-only story preview and exposes matching entries
+ * for the preview surface.
  */
 function figmaMakeKitPlugin(options: { storiesGlob: string | string[] }): Plugin {
   const storiesGlob = Array.isArray(options.storiesGlob) ? options.storiesGlob : [options.storiesGlob]

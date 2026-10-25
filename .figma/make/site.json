@@ -1,5 +1,9 @@
 {
-  "description": "Manage patient records, admissions, discharges, and privacy workflows in one system designed for small hospitals and their care teams.",
+  "title": "Alaga",
+  "description": "Alaga health records and patient-care management for Alaga Philippine Medical Center.",
+  "icons": {
+    "icon": "/favicon.svg"
+  },
   "robots": {
     "index": false
   },

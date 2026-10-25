@@ -13,15 +13,18 @@ const dataDictionaryRoutes = require('./routes/data-dictionary')
 const userRoutes = require('./routes/users')
 const referenceRoutes = require('./routes/reference')
 const admissionRoutes = require('./routes/admissions')
-const { corsOrigin } = require('./config/env')
+const { isAllowedCorsOrigin } = require('./config/env')
 const { notFound, errorHandler } = require('./middleware/error-handler')
 
 const app = express()
 
 app.use(helmet())
 app.use(cors({
-  origin: corsOrigin,
-  methods: ['GET', 'POST', 'OPTIONS'],
+  origin(origin, callback) {
+    if (isAllowedCorsOrigin(origin)) return callback(null, true)
+    return callback(new Error('Origin is not allowed by CORS'))
+  },
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Authorization', 'Content-Type'],
 }))
 app.use(express.json({ limit: '10kb' }))

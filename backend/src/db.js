@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise')
 const { db } = require('./config/env')
+const { releaseSequentialLocks } = require('./sequential-id')
 
 const pool = mysql.createPool({
   ...db,
@@ -26,7 +27,7 @@ async function withTransaction(callback) {
     }
     throw error
   } finally {
-    connection.release()
+    if (await releaseSequentialLocks(connection)) connection.release()
   }
 }
 

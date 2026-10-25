@@ -30,5 +30,11 @@ module.exports = {
   },
   jwtSecret: process.env.JWT_SECRET,
   port,
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  isAllowedCorsOrigin(origin) {
+    if (!origin) return true
+    if (process.env.NODE_ENV !== 'production' && /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+      return true
+    }
+    return origin === (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  },
 }

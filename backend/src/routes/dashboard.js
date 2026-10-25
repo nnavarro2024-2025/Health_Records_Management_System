@@ -14,7 +14,8 @@ router.get('/summary', authenticate, authorize('Admin', 'Records Officer', 'Phys
            (SELECT COUNT(*) FROM admissions
             WHERE status = 'discharged' AND DATE(discharge_datetime) = CURRENT_DATE) AS discharges_today,
            (SELECT COUNT(*) FROM retention_records
-            WHERE review_status = 'pending_review') AS retention_pending`,
+            WHERE review_status = 'pending_review'
+              AND review_due_date <= CURRENT_DATE) AS retention_pending`,
       ),
       pool.execute(
         `SELECT al.audit_log_id, al.action_code, al.description, al.occurred_at,
